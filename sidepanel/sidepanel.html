@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PacketLedger — 接口抓包与日志</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <span id="status-dot" class="status-dot is-recording" aria-hidden="true"></span>
+        <strong class="brand-title">PacketLedger</strong>
+        <span id="record-count-badge" class="count-badge" title="当前浏览器 IndexedDB 留存条数">0 条</span>
+      </div>
+      <label class="switch-label" for="toggle-recording">
+        <span id="recording-label-text">录制中</span>
+        <input id="toggle-recording" type="checkbox" switch checked>
+      </label>
+    </div>
+
+    <div class="control-grid">
+      <div class="field-group">
+        <label class="field-label" for="preset-select">抓取范围预设</label>
+        <select id="preset-select" class="select-control">
+          <option value="smart">智能双栈：ChatGPT + B站接口</option>
+          <option value="chatgpt">仅 ChatGPT 聊天与会话接口</option>
+          <option value="bilibili">仅 B站网页端业务接口</option>
+          <option value="custom">特定链接定向记录</option>
+          <option value="all_api">当前浏览的全部网页接口</option>
+        </select>
+      </div>
+
+      <div id="custom-rule-box" class="custom-rule-box" hidden>
+        <div class="custom-rule-row">
+          <select id="custom-scope-select" class="select-control scope-select" aria-label="匹配维度">
+            <option value="request">匹配接口 URL</option>
+            <option value="page">匹配所属页面 URL</option>
+          </select>
+          <input
+            id="custom-pattern-input"
+            type="text"
+            class="text-input"
+            placeholder="输入关键字或正则，如 /api\.bilibili\.com\/x\/v2\/reply/i"
+          >
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <input
+          id="search-input"
+          type="search"
+          class="text-input"
+          placeholder="检索已抓到的 URL、提问词、返回内容..."
+          aria-label="检索已抓记录"
+        >
+        <select id="site-filter-select" class="select-control compact-select" aria-label="按站点筛选">
+          <option value="all">全部站点</option>
+          <option value="chatgpt">ChatGPT</option>
+          <option value="bilibili">B站</option>
+          <option value="other">其他站点</option>
+        </select>
+      </div>
+
+      <div class="options-toolbar">
+        <div class="toggles-group">
+          <label class="switch-label compact" for="toggle-redact" title="自动掩码 Authorization、Cookie 等敏感请求头">
+            <span>脱敏头</span>
+            <input id="toggle-redact" type="checkbox" switch>
+          </label>
+          <label class="switch-label compact" for="toggle-sink" title="实时推送至本机 127.0.0.1:17890 自动追加写入磁盘 .jsonl">
+            <span>实时落盘</span>
+            <input id="toggle-sink" type="checkbox" switch>
+          </label>
+          <button id="btn-sink-help" type="button" class="link-btn" title="查看本地自动落盘启动命令">落盘说明</button>
+        </div>
+
+        <div class="actions-group">
+          <button id="btn-export-jsonl" type="button" class="btn btn-primary">导出 .jsonl</button>
+          <button id="btn-open-clear" type="button" class="btn btn-subtle">清空</button>
+        </div>
+      </div>
+
+      <p id="sink-status-banner" class="sink-banner" hidden></p>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div tabindex="0" role="region" aria-labelledby="capture-table-caption" class="table-wrapper">
+      <table id="records-table" class="records-table">
+        <caption id="capture-table-caption" class="sr-only">已捕获的网页接口流量记录表</caption>
+        <thead>
+          <tr>
+            <th scope="col">方法与路径</th>
+            <th scope="col">状态</th>
+            <th scope="col">站点</th>
+            <th scope="col">耗时 / 时间</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+      <div id="empty-state" class="empty-state">
+        <p class="empty-title">暂无匹配的抓包记录</p>
+        <p class="empty-desc">保持右上角处于录制状态，直接在当前浏览器的 ChatGPT 或 B站页面正常操作，命中的接口将实时出现在此处。</p>
+      </div>
+    </div>
+
+    <section id="detail-pane" class="detail-pane" aria-label="单条报文详情面板" hidden>
+      <div class="detail-header">
+        <div class="detail-summary-line">
+          <span id="detail-method-badge" class="method-tag">POST</span>
+          <span id="detail-url-text" class="detail-url" title=""></span>
+        </div>
+        <button id="btn-close-detail" type="button" class="icon-close-btn" aria-label="关闭详情面板">×</button>
+      </div>
+
+      <div class="detail-tabs" role="tablist" aria-label="报文详情视图切换">
+        <button type="button" role="tab" class="tab-btn is-active" data-tab="overview" aria-selected="true">概览与解析</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="reqBody" aria-selected="false">请求体</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="resBody" aria-selected="false">响应体</button>
+        <button type="button" role="tab" class="tab-btn" data-tab="headers" aria-selected="false">请求/响应头</button>
+        <button id="btn-copy-current" type="button" class="copy-btn">复制当前页</button>
+      </div>
+
+      <div id="detail-content" class="detail-content"></div>
+    </section>
+  </main>
+
+  <!-- 清空确认模态框 (遵循 modern-web-guidance dialog & light-dismiss-a-dialog 规范) -->
+  <dialog id="confirm-clear-dialog" closedby="any" aria-labelledby="confirm-clear-title">
+    <h1 id="confirm-clear-title" class="dialog-title">清空浏览器内暂存记录？</h1>
+    <p class="dialog-body">此操作将清除扩展 IndexedDB 中暂存的全部抓包记录；已通过导出或本地实时落盘写入硬盘的 <code>.jsonl</code> 文件不受影响。</p>
+    <form method="dialog" class="dialog-actions">
+      <button value="cancel" class="btn btn-subtle" autofocus>取消</button>
+      <button value="confirm" class="btn btn-danger">确认清空</button>
+    </form>
+  </dialog>
+
+  <!-- 本地实时落盘伴侣说明模态框 -->
+  <dialog id="sink-help-dialog" closedby="any" aria-labelledby="sink-help-title">
+    <h1 id="sink-help-title" class="dialog-title">开启本地磁盘实时写入 (.jsonl)</h1>
+    <p class="dialog-body">受浏览器安全沙盒限制，网页扩展不能静默直接改写任意本地路径。运行配套的零依赖接收脚本后，开启面板上的<strong>实时落盘</strong>开关，每抓到一条请求都会按站点自动追加写入本地磁盘，且自动解压 B站直播 Brotli 弹幕帧：</p>
+    <pre id="sink-cmd-block" class="code-block">node companion/local-sink.mjs</pre>
+    <p class="dialog-body muted">默认保存目录：<code>~/Downloads/packet-ledger-logs/</code>（可用 <code>--dir=/自定义路径</code> 修改）。</p>
+    <form method="dialog" class="dialog-actions">
+      <button id="btn-copy-sink-cmd" type="button" class="btn btn-subtle">复制启动命令</button>
+      <button value="close" class="btn btn-primary" autofocus>知道了</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
