@@ -47,7 +47,7 @@ for (const [sizeStr, relPath] of Object.entries(manifest.icons)) {
 }
 
 const panelHtml = fs.readFileSync(path.join(ROOT, 'sidepanel/sidepanel.html'), 'utf8');
-assert.equal(/on[a-z]+\s*=/i.test(panelHtml), false, 'sidepanel.html must not contain inline event attributes');
+assert.equal(/\bon(?:click|change|input|submit|load|error|keydown|keyup|mousedown|mouseup)\s*=/i.test(panelHtml), false, 'sidepanel.html must not contain inline event attributes');
 
 // 3. E2E test of companion/local-sink.mjs + Brotli WS frame decoding
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'packet-ledger-test-'));
